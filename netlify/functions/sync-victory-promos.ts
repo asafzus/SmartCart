@@ -76,7 +76,7 @@ async function fetchVictoryPromos(): Promise<ParsedPromo[]> {
     const endDate   = new Date(p.PromotionEndDateTime   ?? p.PromotionEndDate   ?? '')
     if (isNaN(endDate.getTime()) || endDate < now) continue
 
-    const promotionId = String(p.PromotionId).trim()
+    const promotionId = String(p.PromotionID ?? p.PromotionId ?? '').trim()
     const description = String(p.PromotionDescription ?? '').trim()
     const clubId      = String(p.ClubID ?? p.ClubId ?? '0').trim()
 

@@ -38,7 +38,7 @@ interface ChainPrice {
   chainId: string
   chainName: string
   price: number
-  promo: PromoInfo | null
+  promos: PromoInfo[]
 }
 
 interface LocationState {
@@ -58,22 +58,123 @@ interface PriceSheetProps {
   onClose: () => void
 }
 
-function formatPromoNote(promo: PromoInfo, t: (key: string, opts?: Record<string, unknown>) => string): string {
-  const { minQty, discountedPrice, description } = promo
-  if (minQty > 1 && discountedPrice != null) {
-    const total = (minQty * discountedPrice).toFixed(2)
-    return t('item.promoMinQty', { qty: minQty, total })
-  }
-  if (discountedPrice != null) {
-    return `₪${discountedPrice.toFixed(2)}`
-  }
-  return description
+// ── PromoPopup ────────────────────────────────────────────────────────────────
+
+interface PromoPopupProps {
+  chainName: string
+  promos: PromoInfo[]
+  onClose: () => void
 }
+
+function PromoPopup({ chainName, promos, onClose }: PromoPopupProps) {
+  const { t, i18n } = useTranslation()
+  const isHe = i18n.language === 'he'
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60 z-[60]" onClick={onClose} />
+      <div
+        className="fixed inset-x-4 top-1/2 -translate-y-1/2 bg-surface-container-lowest rounded-2xl z-[60] shadow-2xl max-h-[80vh] overflow-y-auto"
+        dir={isHe ? 'rtl' : 'ltr'}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-lg pt-lg pb-md border-b border-outline-variant">
+          <p className="font-jakarta font-bold text-body-lg text-on-surface">{chainName}</p>
+          <button
+            onClick={onClose}
+            className="text-on-surface-variant hover:text-on-surface text-xl leading-none"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Promo list */}
+        <div className="px-lg py-md space-y-md">
+          {promos.map((promo, i) => {
+            const isCoupon = promo.isCoupon
+            const isMembersOnly = promo.clubId !== '0'
+            const perItemPrice = promo.discountedPrice != null
+              ? promo.discountedPrice / (promo.minQty || 1)
+              : null
+            const endDate = new Date(promo.endDate).toLocaleDateString(isHe ? 'he-IL' : 'en-IL', {
+              day: '2-digit', month: '2-digit', year: '2-digit',
+            })
+
+            return (
+              <div
+                key={promo.promotionId ?? i}
+                className="bg-surface-container rounded-xl p-md space-y-xs"
+              >
+                {/* Badges */}
+                <div className="flex items-center gap-xs flex-wrap">
+                  {isCoupon && (
+                    <span className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-tertiary-container text-on-tertiary-container">
+                      {t('item.coupon')}
+                    </span>
+                  )}
+                  {!isCoupon && (
+                    <span className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-secondary-container text-on-secondary-container">
+                      {t('item.promo')}
+                    </span>
+                  )}
+                  {isMembersOnly && (
+                    <span className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-surface-container-high text-on-surface-variant">
+                      🏷️ {t('item.membersOnly')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description */}
+                <p className="font-jakarta text-body-md text-on-surface font-semibold">
+                  {promo.description}
+                </p>
+
+                {/* Deal details */}
+                <div className="space-y-0.5">
+                  {promo.discountedPrice != null && (
+                    <p className="font-jakarta text-body-md text-secondary font-semibold">
+                      {promo.minQty > 1
+                        ? t('item.promoMinQty', { qty: promo.minQty, total: promo.discountedPrice.toFixed(2) })
+                        : `₪${promo.discountedPrice.toFixed(2)}`}
+                    </p>
+                  )}
+                  {promo.minQty > 1 && perItemPrice != null && (
+                    <p className="font-jakarta text-label-sm text-on-surface-variant">
+                      {isHe ? `₪${perItemPrice.toFixed(2)} ליחידה` : `₪${perItemPrice.toFixed(2)} per item`}
+                    </p>
+                  )}
+                  {promo.maxQty != null && (
+                    <p className="font-jakarta text-label-sm text-on-surface-variant">
+                      {isHe ? `מקסימום ${promo.maxQty} יחידות` : `Max ${promo.maxQty} units`}
+                    </p>
+                  )}
+                  {promo.minPurchaseAmount != null && promo.minPurchaseAmount > 0 && (
+                    <p className="font-jakarta text-label-sm text-on-surface-variant">
+                      {isHe ? `מינימום רכישה ₪${promo.minPurchaseAmount.toFixed(2)}` : `Min. purchase ₪${promo.minPurchaseAmount.toFixed(2)}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* End date */}
+                <p className="font-jakarta text-label-sm text-outline">
+                  {isHe ? `בתוקף עד ${endDate}` : `Valid until ${endDate}`}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── PriceSheet ────────────────────────────────────────────────────────────────
 
 function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceSheetProps) {
   const { t, i18n } = useTranslation()
   const isHe = i18n.language === 'he'
   const sub = [product.brand, product.size].filter(Boolean).join(' · ')
+  const [promoPopup, setPromoPopup] = useState<{ chainName: string; promos: PromoInfo[] } | null>(null)
 
   return (
     <>
@@ -113,6 +214,9 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
                   <th className="font-jakarta text-label-sm text-on-surface-variant font-semibold pb-xs text-start">
                     {t('item.store')}
                   </th>
+                  <th className="font-jakarta text-label-sm text-on-surface-variant font-semibold pb-xs text-center">
+                    {t('item.promoCol')}
+                  </th>
                   <th className="font-jakarta text-label-sm text-on-surface-variant font-semibold pb-xs text-end">
                     {t('item.price')}
                   </th>
@@ -120,60 +224,45 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
               </thead>
               <tbody>
                 {prices.map((row, i) => {
-                  const hasPromo = row.promo != null
-                  const promoPrice = row.promo?.discountedPrice
-                  const isCoupon = row.promo?.isCoupon ?? false
-                  const isMembersOnly = row.promo != null && row.promo.clubId !== '0'
-                  const promoNote = row.promo ? formatPromoNote(row.promo, t) : null
+                  const hasPromos = row.promos.length > 0
 
                   return (
                     <tr
                       key={row.chainId}
                       className={`border-b border-outline-variant/40 last:border-0 ${i === 0 ? 'bg-primary/5' : ''}`}
                     >
-                      {/* Store name + badges */}
+                      {/* Store name */}
                       <td className="py-sm">
-                        <div className="flex items-center gap-xs flex-wrap">
+                        <div className="flex items-center gap-xs">
                           {i === 0 && (
                             <span className="text-xs bg-primary text-on-primary px-xs py-0.5 rounded-full font-semibold font-jakarta">
                               ✓
                             </span>
                           )}
                           <span className="font-jakarta text-body-md text-on-surface">{row.chainName}</span>
-                          {hasPromo && (
-                            <span className={`text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta ${isCoupon ? 'bg-tertiary-container text-on-tertiary-container' : 'bg-secondary-container text-on-secondary-container'}`}>
-                              {isCoupon ? t('item.coupon') : t('item.promo')}
-                            </span>
-                          )}
-                          {isMembersOnly && (
-                            <span className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-surface-container text-on-surface-variant">
-                              🏷️ {t('item.membersOnly')}
-                            </span>
-                          )}
                         </div>
-                        {promoNote && (
-                          <p className="font-jakarta text-label-sm text-secondary mt-0.5">
-                            {promoNote}
-                          </p>
+                      </td>
+
+                      {/* Promo button */}
+                      <td className="py-sm text-center">
+                        {hasPromos && (
+                          <button
+                            onClick={() => setPromoPopup({ chainName: row.chainName, promos: row.promos })}
+                            className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-secondary-container text-on-secondary-container hover:opacity-80 transition-opacity"
+                          >
+                            {row.promos.some(p => p.isCoupon) && row.promos.length === 1
+                              ? t('item.coupon')
+                              : t('item.promo')}
+                            {row.promos.length > 1 ? ` (${row.promos.length})` : ''}
+                          </button>
                         )}
                       </td>
 
                       {/* Price column */}
-                      <td className="py-sm text-end align-top">
-                        {promoPrice != null ? (
-                          <div className="flex flex-col items-end">
-                            <span className="font-jakarta text-body-md font-semibold text-secondary">
-                              ₪{promoPrice.toFixed(2)}
-                            </span>
-                            <span className="font-jakarta text-label-sm text-outline line-through">
-                              ₪{row.price.toFixed(2)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="font-jakarta text-body-md text-on-surface font-semibold">
-                            ₪{row.price.toFixed(2)}
-                          </span>
-                        )}
+                      <td className="py-sm text-end align-middle">
+                        <span className="font-jakarta text-body-md text-on-surface font-semibold">
+                          ₪{row.price.toFixed(2)}
+                        </span>
                       </td>
                     </tr>
                   )
@@ -194,6 +283,15 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
           </button>
         </div>
       </div>
+
+      {/* Promo popup */}
+      {promoPopup && (
+        <PromoPopup
+          chainName={promoPopup.chainName}
+          promos={promoPopup.promos}
+          onClose={() => setPromoPopup(null)}
+        />
+      )}
     </>
   )
 }
