@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String   @id @db.Uuid
+  email          String   @unique
+  telegramChatId BigInt?  @map("telegram_chat_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  lists      List[]
+  categories Category[]
+
+  @@map("users")
+}
+
+model List {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id") @db.Uuid
+  title     String   @default("My List")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ListItem[]
+
+  @@map("lists")
+}
+
+model ListItem {
+  id             String   @id @default(uuid())
+  listId         String   @map("list_id")
+  productBarcode String?  @map("product_barcode")
+  freeText       String?  @map("free_text")
+  categoryId     String?  @map("category_id")
+  qty            Float    @default(1)
+  unit           String   @default("unit")
+  note           String?
+  isChecked      Boolean  @default(false) @map("is_checked")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  list     List      @relation(fields: [listId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@map("list_items")
+}
+
+model Category {
+  id     String  @id @default(uuid())
+  userId String? @map("user_id") @db.Uuid
+  nameHe String  @map("name_he")
+  nameEn String  @map("name_en")
+  emoji  String
+  color  String
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ListItem[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  barcode     String   @unique
+  nameHe      String   @map("name_he")
+  brand       String?
+  size        String?
+  updatedDate DateTime @default(now()) @map("updated_date")
+
+  prices ProductPrice[]
+
+  @@map("products")
+}
+
+model ProductPrice {
+  id             String   @id @default(uuid())
+  productBarcode String   @map("product_barcode")
+  chainId        String   @map("chain_id")
+  price          Float
+  updatedDate    DateTime @default(now()) @map("updated_date")
+
+  product Product @relation(fields: [productBarcode], references: [barcode], onDelete: Cascade)
+  chain   Chain   @relation(fields: [chainId], references: [id], onDelete: Cascade)
+
+  @@unique([productBarcode, chainId])
+  @@map("product_prices")
+}
+
+model Chain {
+  id           String    @id @default(uuid())
+  nameHe       String    @map("name_he")
+  xmlUrl       String    @map("xml_url")
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  prices ProductPrice[]
+
+  @@map("chains")
+}
+
+model TelegramLinkCode {
+  code      String   @id
+  chatId    String   @map("chat_id")
+  expiresAt DateTime @map("expires_at")
+
+  @@map("telegram_link_codes")
+}

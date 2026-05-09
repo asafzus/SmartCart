@@ -1,0 +1,65 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[dev]
+  command = "npm run dev"
+  port = 8888
+  targetPort = 5173
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# ── Vite dev-server passthrough rules ─────────────────────────────────────────
+# These must come BEFORE the SPA catch-all below so that Netlify dev does not
+# rewrite Vite's module/asset requests to /index.html (which causes Vite 8's
+# import-analysis plugin to try to parse HTML as JavaScript).
+[[redirects]]
+  from = "/src/*"
+  to = "/src/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/node_modules/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/@vite/*"
+  to = "/@vite/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/@react-refresh"
+  to = "/@react-refresh"
+  status = 200
+
+[[redirects]]
+  from = "/@fs/*"
+  to = "/@fs/:splat"
+  status = 200
+
+# ── SPA fallback (production + non-asset dev requests) ────────────────────────
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
+
+# ─── Scheduled sync functions ─────────────────────────────────
+# Shufersal — master chain (canonical product names) — 03:00 UTC daily
+[functions."sync-shufersal"]
+  schedule = "0 3 * * *"
+
+# Rami Levy — prices only — 03:10 UTC daily
+[functions."sync-rami-levy"]
+  schedule = "10 3 * * *"
+
+# Victory — prices only — 03:20 UTC daily
+[functions."sync-victory"]
+  schedule = "20 3 * * *"
