@@ -72,6 +72,7 @@ model Product {
   updatedDate DateTime @default(now()) @map("updated_date")
 
   prices ProductPrice[]
+  promos ProductPromo[]
 
   @@map("products")
 }
@@ -97,8 +98,33 @@ model Chain {
   lastSyncedAt DateTime? @map("last_synced_at")
 
   prices ProductPrice[]
+  promos ProductPromo[]
 
   @@map("chains")
+}
+
+model ProductPromo {
+  id                    String   @id @default(uuid())
+  productBarcode        String   @map("product_barcode")
+  chainId               String   @map("chain_id")
+  promotionId           String   @map("promotion_id")
+  description           String
+  discountedPrice       Float?   @map("discounted_price")
+  discountedPricePerMida Float?  @map("discounted_price_per_mida")
+  minQty                Float    @default(1) @map("min_qty")
+  maxQty                Float?   @map("max_qty")
+  minPurchaseAmount     Float?   @map("min_purchase_amount")
+  startDate             DateTime @map("start_date")
+  endDate               DateTime @map("end_date")
+  isCoupon              Boolean  @default(false) @map("is_coupon")
+  clubId                String   @default("0") @map("club_id")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+
+  product Product @relation(fields: [productBarcode], references: [barcode], onDelete: Cascade)
+  chain   Chain   @relation(fields: [chainId], references: [id], onDelete: Cascade)
+
+  @@unique([productBarcode, chainId, promotionId])
+  @@map("product_promos")
 }
 
 model TelegramLinkCode {

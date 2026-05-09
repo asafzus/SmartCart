@@ -20,11 +20,25 @@ interface FrequentItem {
   size: string | null
 }
 
+interface PromoInfo {
+  promotionId: string
+  description: string
+  discountedPrice: number | null
+  discountedPricePerMida: number | null
+  minQty: number
+  maxQty: number | null
+  minPurchaseAmount: number | null
+  startDate: string
+  endDate: string
+  isCoupon: boolean
+  clubId: string
+}
+
 interface ChainPrice {
   chainId: string
   chainName: string
   price: number
-  // ready for discounts: originalPrice?: number, promoName?: string, discountPrice?: number
+  promo: PromoInfo | null
 }
 
 interface LocationState {
@@ -42,6 +56,18 @@ interface PriceSheetProps {
   adding: boolean
   onAdd: () => void
   onClose: () => void
+}
+
+function formatPromoNote(promo: PromoInfo, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  const { minQty, discountedPrice, description } = promo
+  if (minQty > 1 && discountedPrice != null) {
+    const total = (minQty * discountedPrice).toFixed(2)
+    return t('item.promoMinQty', { qty: minQty, total })
+  }
+  if (discountedPrice != null) {
+    return `₪${discountedPrice.toFixed(2)}`
+  }
+  return description
 }
 
 function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceSheetProps) {
@@ -93,24 +119,65 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
                 </tr>
               </thead>
               <tbody>
-                {prices.map((row, i) => (
-                  <tr
-                    key={row.chainId}
-                    className={`border-b border-outline-variant/40 last:border-0 ${i === 0 ? 'bg-primary/5' : ''}`}
-                  >
-                    <td className="font-jakarta text-body-md text-on-surface py-sm flex items-center gap-xs">
-                      {i === 0 && (
-                        <span className="text-xs bg-primary text-on-primary px-xs py-0.5 rounded-full font-semibold">
-                          ✓
-                        </span>
-                      )}
-                      {row.chainName}
-                    </td>
-                    <td className="font-jakarta text-body-md text-on-surface py-sm text-end font-semibold">
-                      ₪{row.price.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {prices.map((row, i) => {
+                  const hasPromo = row.promo != null
+                  const promoPrice = row.promo?.discountedPrice
+                  const isCoupon = row.promo?.isCoupon ?? false
+                  const isMembersOnly = row.promo != null && row.promo.clubId !== '0'
+                  const promoNote = row.promo ? formatPromoNote(row.promo, t) : null
+
+                  return (
+                    <tr
+                      key={row.chainId}
+                      className={`border-b border-outline-variant/40 last:border-0 ${i === 0 ? 'bg-primary/5' : ''}`}
+                    >
+                      {/* Store name + badges */}
+                      <td className="py-sm">
+                        <div className="flex items-center gap-xs flex-wrap">
+                          {i === 0 && (
+                            <span className="text-xs bg-primary text-on-primary px-xs py-0.5 rounded-full font-semibold font-jakarta">
+                              ✓
+                            </span>
+                          )}
+                          <span className="font-jakarta text-body-md text-on-surface">{row.chainName}</span>
+                          {hasPromo && (
+                            <span className={`text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta ${isCoupon ? 'bg-tertiary-container text-on-tertiary-container' : 'bg-secondary-container text-on-secondary-container'}`}>
+                              {isCoupon ? t('item.coupon') : t('item.promo')}
+                            </span>
+                          )}
+                          {isMembersOnly && (
+                            <span className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-surface-container text-on-surface-variant">
+                              🏷️ {t('item.membersOnly')}
+                            </span>
+                          )}
+                        </div>
+                        {promoNote && (
+                          <p className="font-jakarta text-label-sm text-secondary mt-0.5">
+                            {promoNote}
+                          </p>
+                        )}
+                      </td>
+
+                      {/* Price column */}
+                      <td className="py-sm text-end align-top">
+                        {promoPrice != null ? (
+                          <div className="flex flex-col items-end">
+                            <span className="font-jakarta text-body-md font-semibold text-secondary">
+                              ₪{promoPrice.toFixed(2)}
+                            </span>
+                            <span className="font-jakarta text-label-sm text-outline line-through">
+                              ₪{row.price.toFixed(2)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-jakarta text-body-md text-on-surface font-semibold">
+                            ₪{row.price.toFixed(2)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

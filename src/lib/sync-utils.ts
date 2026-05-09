@@ -14,6 +14,21 @@ export interface ParsedProduct {
   price: number
 }
 
+export interface ParsedPromo {
+  promotionId: string
+  description: string
+  discountedPrice?: number
+  discountedPricePerMida?: number
+  minQty: number
+  maxQty?: number
+  minPurchaseAmount?: number
+  startDate: Date
+  endDate: Date
+  isCoupon: boolean
+  clubId: string
+  itemCodes: string[]
+}
+
 // ─── Prisma client factory ────────────────────────────────────────────────────
 
 export function createPrisma() {
@@ -37,7 +52,7 @@ export function createRedis(): Redis {
 export async function fetchFirstGzUrl(listingUrl: string): Promise<string> {
   const res = await fetch(listingUrl, {
     headers: { 'User-Agent': 'SmartCart/1.0' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) throw new Error(`Failed to fetch listing: ${res.status}`)
   const html = await res.text()
@@ -76,7 +91,7 @@ export async function fetchFirstGzUrl(listingUrl: string): Promise<string> {
 export async function fetchAndDecompress(gzUrl: string): Promise<string> {
   const res = await fetch(gzUrl, {
     headers: { 'User-Agent': 'SmartCart/1.0' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) throw new Error(`Failed to fetch .gz file: ${res.status}`)
   const buffer = Buffer.from(await res.arrayBuffer())
@@ -235,5 +250,126 @@ export async function syncChain(params: {
     return { productsUpserted: products.length, pricesUpserted: products.length }
   } finally {
     await (prisma as any).$disconnect()
+  }
+}
+
+// ─── Promo Sync ───────────────────────────────────────────────────────────────
+
+export async function syncPromos(params: {
+  chainId: string
+  promos: ParsedPromo[]
+}): Promise<{ promosUpserted: number }> {
+  const { chainId, promos } = params
+  const { Pool } = await import('pg')
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL! })
+
+  try {
+    // ── Fetch known barcodes for this chain ────────────────────────────────────
+    const knownResult = await pool.query(
+      `SELECT product_barcode FROM product_prices WHERE chain_id = $1`,
+      [chainId]
+    )
+    const knownBarcodes = new Set(knownResult.rows.map((r: any) => String(r.product_barcode)))
+    console.log(`[syncPromos:${chainId}] Known barcodes: ${knownBarcodes.size}`)
+
+    // ── Flatten promos into rows, filtering to known barcodes ─────────────────
+    const rows: {
+      promotionId: string
+      barcode: string
+      description: string
+      discountedPrice: number | null
+      discountedPricePerMida: number | null
+      minQty: number
+      maxQty: number | null
+      minPurchaseAmount: number | null
+      startDate: Date
+      endDate: Date
+      isCoupon: boolean
+      clubId: string
+    }[] = []
+
+    for (const promo of promos) {
+      for (const barcode of promo.itemCodes) {
+        if (!knownBarcodes.has(barcode)) continue
+        rows.push({
+          promotionId: promo.promotionId,
+          barcode,
+          description: promo.description,
+          discountedPrice: promo.discountedPrice ?? null,
+          discountedPricePerMida: promo.discountedPricePerMida ?? null,
+          minQty: promo.minQty,
+          maxQty: promo.maxQty ?? null,
+          minPurchaseAmount: promo.minPurchaseAmount ?? null,
+          startDate: promo.startDate,
+          endDate: promo.endDate,
+          isCoupon: promo.isCoupon,
+          clubId: promo.clubId,
+        })
+      }
+    }
+
+    // Deduplicate by (promotionId, barcode) — same combo can appear if a barcode
+    // is listed more than once within a single promotion's item list
+    const seen = new Map<string, typeof rows[number]>()
+    for (const row of rows) {
+      seen.set(`${row.promotionId}:${row.barcode}`, row)
+    }
+    const dedupedRows = [...seen.values()]
+
+    console.log(`[syncPromos:${chainId}] Rows to insert: ${dedupedRows.length} (${rows.length - dedupedRows.length} duplicates removed)`)
+
+    // ── Transaction: delete chain promos + bulk insert ─────────────────────────
+    await pool.query('BEGIN')
+    try {
+      await pool.query(`DELETE FROM product_promos WHERE chain_id = $1`, [chainId])
+
+      if (dedupedRows.length > 0) {
+        for (let i = 0; i < dedupedRows.length; i += SQL_BATCH_SIZE) {
+          const batch = dedupedRows.slice(i, i + SQL_BATCH_SIZE)
+          const values = batch.map((_r, idx) => {
+            const base = idx * 13
+            return `(gen_random_uuid(), $${base+1}, $${base+2}, $${base+3}, $${base+4}, $${base+5}, $${base+6}, $${base+7}, $${base+8}, $${base+9}, $${base+10}, $${base+11}, $${base+12}, $${base+13}, NOW())`
+          }).join(',')
+
+          const flatParams = batch.flatMap(r => [
+            r.barcode, chainId, r.promotionId, r.description,
+            r.discountedPrice, r.discountedPricePerMida,
+            r.minQty, r.maxQty, r.minPurchaseAmount,
+            r.startDate, r.endDate, r.isCoupon, r.clubId,
+          ])
+
+          await pool.query(
+            `INSERT INTO product_promos
+               (id, product_barcode, chain_id, promotion_id, description,
+                discounted_price, discounted_price_per_mida,
+                min_qty, max_qty, min_purchase_amount,
+                start_date, end_date, is_coupon, club_id, updated_at)
+             VALUES ${values}
+             ON CONFLICT (product_barcode, chain_id, promotion_id) DO UPDATE SET
+               description             = EXCLUDED.description,
+               discounted_price        = EXCLUDED.discounted_price,
+               discounted_price_per_mida = EXCLUDED.discounted_price_per_mida,
+               min_qty                 = EXCLUDED.min_qty,
+               max_qty                 = EXCLUDED.max_qty,
+               min_purchase_amount     = EXCLUDED.min_purchase_amount,
+               start_date              = EXCLUDED.start_date,
+               end_date                = EXCLUDED.end_date,
+               is_coupon               = EXCLUDED.is_coupon,
+               club_id                 = EXCLUDED.club_id,
+               updated_at              = NOW()`,
+            flatParams
+          )
+        }
+      }
+
+      await pool.query('COMMIT')
+    } catch (err) {
+      await pool.query('ROLLBACK')
+      throw err
+    }
+
+    return { promosUpserted: dedupedRows.length }
+  } finally {
+    await pool.end()
   }
 }
