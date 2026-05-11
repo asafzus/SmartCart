@@ -6,6 +6,7 @@ import Register from './pages/Register'
 import Home from './pages/Home'
 import AddItem from './pages/AddItem'
 import ComparePrices from './pages/ComparePrices'
+import TelegramSetup from './pages/TelegramSetup'
 
 export default function App() {
   return (
@@ -38,6 +39,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ComparePrices />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/telegram-setup"
+          element={
+            <ProtectedRoute>
+              <TelegramSetup />
             </ProtectedRoute>
           }
         />

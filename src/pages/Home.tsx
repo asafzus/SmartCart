@@ -193,6 +193,7 @@ function AccountOverlay({ onClose, onLogout, telegramLinked, onUnlink }: Account
   const { t, i18n } = useTranslation()
   const isHe = i18n.language === 'he'
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <>
@@ -208,17 +209,23 @@ function AccountOverlay({ onClose, onLogout, telegramLinked, onUnlink }: Account
           <p className="font-jakarta text-body-md text-on-surface font-semibold">{user?.email}</p>
         </div>
 
-        <button
-          onClick={onUnlink}
-          disabled={!telegramLinked}
-          className="w-full border border-outline font-jakarta font-semibold text-body-md rounded-full py-sm mb-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-sm hover:bg-surface-container disabled:cursor-not-allowed"
-        >
-          <span>📤</span>
-          <span>{t('telegram.unlink')}</span>
-          {!telegramLinked && (
-            <span className="font-jakarta text-label-sm text-on-surface-variant">({t('telegram.notLinked')})</span>
-          )}
-        </button>
+        {telegramLinked ? (
+          <button
+            onClick={onUnlink}
+            className="w-full border border-outline font-jakarta font-semibold text-body-md rounded-full py-sm mb-sm transition-opacity flex items-center justify-center gap-sm hover:bg-surface-container"
+          >
+            <span>📤</span>
+            <span>{t('telegram.unlink')}</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => { onClose(); navigate('/telegram-setup') }}
+            className="w-full border border-primary text-primary font-jakarta font-semibold text-body-md rounded-full py-sm mb-sm flex items-center justify-center gap-sm hover:bg-primary/5 transition-colors"
+          >
+            <span>📲</span>
+            <span>{t('telegram.linkTelegram')}</span>
+          </button>
+        )}
 
         <button
           onClick={onLogout}
@@ -550,7 +557,14 @@ export default function Home() {
                 </button>
                 <button
                   className="flex-1 md:flex-none h-11 px-md border border-secondary text-secondary rounded-xl font-jakarta font-semibold text-sm flex items-center justify-center gap-1 active:scale-95 transition-transform hover:bg-secondary-container"
-                  onClick={() => { setTelegramStatus('idle'); setShowTelegramConfirm(true) }}
+                  onClick={() => {
+                    if (!telegramLinked) {
+                      navigate('/telegram-setup')
+                    } else {
+                      setTelegramStatus('idle')
+                      setShowTelegramConfirm(true)
+                    }
+                  }}
                 >
                   📤 {t('list.share')}
                 </button>
