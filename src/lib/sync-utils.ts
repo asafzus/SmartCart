@@ -287,6 +287,12 @@ export async function syncPromos(params: {
   promos: ParsedPromo[]
 }): Promise<{ promosUpserted: number }> {
   const { chainId, promos } = params
+
+  // ── Safety guard: never sync an empty promo list ───────────────────────────
+  if (promos.length === 0) {
+    throw new Error(`[syncPromos:${chainId}] Parsed 0 promos — aborting to protect existing promo data. Check XML format.`)
+  }
+
   const { Pool } = await import('pg')
   const pool = new Pool({ connectionString: process.env.DATABASE_URL! })
 
