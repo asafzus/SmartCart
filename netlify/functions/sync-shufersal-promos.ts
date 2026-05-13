@@ -14,12 +14,6 @@ const xmlParser = new XMLParser({
   trimValues: true,
 })
 
-function parseDate(dateStr: string, hourStr?: string): Date {
-  const base = dateStr?.trim() ?? ''
-  const hour = (hourStr?.trim() ?? '00:00').slice(0, 5)
-  return new Date(`${base}T${hour}:00`)
-}
-
 function toFloat(val: any): number | undefined {
   const n = parseFloat(String(val ?? ''))
   return isNaN(n) || n <= 0 ? undefined : n
@@ -27,47 +21,110 @@ function toFloat(val: any): number | undefined {
 
 export function parseShufersalPromos(xml: string): ParsedPromo[] {
   const parsed = xmlParser.parse(xml)
-  const root = parsed?.root ?? parsed?.Root
+  const root = parsed?.Root ?? parsed?.root ?? parsed?.[Object.keys(parsed)[0]]
   let promos = root?.Promotions?.Promotion ?? []
   if (!Array.isArray(promos)) promos = [promos]
 
   const result: ParsedPromo[] = []
+  const now = new Date()
 
   for (const p of promos) {
-    // Skip inactive
+    // ── Dates — new format uses combined ISO datetime, old uses separate date+hour ──
+    const endDate = p.PromotionEndDateTime
+      ? new Date(p.PromotionEndDateTime)
+      : new Date(`${p.PromotionEndDate ?? ''}T${(p.PromotionEndHour ?? '00:00').slice(0, 5)}:00`)
+    const startDate = p.PromotionStartDateTime
+      ? new Date(p.PromotionStartDateTime)
+      : new Date(`${p.PromotionStartDate ?? ''}T${(p.PromotionStartHour ?? '00:00').slice(0, 5)}:00`)
+    if (isNaN(endDate.getTime()) || endDate < now) continue
+
+    // ── Skip inactive (old format only — new format omits this field) ─────────
     const isActive = p.AdditionalRestrictions?.AdditionalIsActive ?? 1
     if (String(isActive) === '0') continue
 
-    // Dates
-    const startDate = parseDate(p.PromotionStartDate, p.PromotionStartHour)
-    const endDate   = parseDate(p.PromotionEndDate,   p.PromotionEndHour)
-    if (isNaN(endDate.getTime()) || endDate < new Date()) continue
+    // ── Shared fields ─────────────────────────────────────────────────────────
+    const promotionId = String(p.PromotionID ?? p.PromotionId ?? '').trim()
+    const description = String(p.PromotionDescription ?? '').trim()
 
-    // Items
-    const items = p.PromotionItems?.Item ?? []
-    const itemArr = Array.isArray(items) ? items : [items]
-    const itemCodes = itemArr
-      .filter((i: any) => i?.ItemCode)
-      .map((i: any) => String(i.ItemCode).trim())
-    if (itemCodes.length === 0) continue
+    // ClubID: new format → "0 - כלל הלקוחות" (strip suffix), old → nested Clubs.ClubId
+    const clubRaw = String(p.ClubID ?? p.Clubs?.ClubId ?? p.Clubs?.Clubid ?? '0').trim()
+    const clubId = clubRaw.split(/\s*-\s*/)[0].trim()
 
-    // Club — handle both ClubId and Clubid (inconsistent casing in Shufersal XML)
-    const clubId = String(p.Clubs?.ClubId ?? p.Clubs?.Clubid ?? '0').trim()
+    // isCoupon: new format → direct field, old → nested in AdditionalRestrictions
+    const isCoupon = String(p.AdditionalIsCoupon ?? p.AdditionalRestrictions?.AdditionalIsCoupon ?? '0') === '1'
 
-    result.push({
-      promotionId:            String(p.PromotionId).trim(),
-      description:            String(p.PromotionDescription ?? '').trim(),
-      discountedPrice:        toFloat(p.DiscountedPrice),
-      discountedPricePerMida: toFloat(p.DiscountedPricePerMida),
-      minQty:                 parseFloat(String(p.MinQty ?? '1')) || 1,
-      maxQty:                 toFloat(p.MaxQty),
-      minPurchaseAmount:      toFloat(p.MinPurchaseAmnt),
-      startDate,
-      endDate,
-      isCoupon:  String(p.AdditionalRestrictions?.AdditionalIsCoupon ?? '0') === '1',
-      clubId,
-      itemCodes,
-    })
+    // ── New format: Groups > Group > PromotionItems > PromotionItem ───────────
+    if (p.Groups) {
+      let groups = p.Groups.Group ?? []
+      if (!Array.isArray(groups)) groups = [groups]
+
+      groups.forEach((group: any, gIdx: number) => {
+        const minPurchaseAmount = toFloat(group.MinPurchaseAmount)
+
+        let items = group.PromotionItems?.PromotionItem ?? []
+        if (!Array.isArray(items)) items = [items]
+
+        const itemCodes: string[] = []
+        let discountedPrice: number | undefined
+        let discountedPricePerMida: number | undefined
+        let minQty = 1
+        let maxQty: number | undefined
+
+        for (const item of items) {
+          if (!item?.ItemCode) continue
+          itemCodes.push(String(item.ItemCode).trim())
+          if (discountedPrice === undefined) {
+            discountedPrice = toFloat(item.DiscountedPrice)
+            discountedPricePerMida = toFloat(item.DiscountedPricePerMida)
+            minQty = parseFloat(String(item.MinQty ?? '1')) || 1
+            maxQty = toFloat(item.MaxQty)
+          }
+        }
+
+        if (itemCodes.length === 0) return
+
+        const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
+
+        result.push({
+          promotionId: groupPromoId,
+          description,
+          discountedPrice,
+          discountedPricePerMida,
+          minQty,
+          maxQty,
+          minPurchaseAmount,
+          startDate,
+          endDate,
+          isCoupon,
+          clubId,
+          itemCodes,
+        })
+      })
+
+    // ── Old format: flat PromotionItems > Item ────────────────────────────────
+    } else {
+      const items = p.PromotionItems?.Item ?? []
+      const itemArr = Array.isArray(items) ? items : [items]
+      const itemCodes = itemArr
+        .filter((i: any) => i?.ItemCode)
+        .map((i: any) => String(i.ItemCode).trim())
+      if (itemCodes.length === 0) continue
+
+      result.push({
+        promotionId,
+        description,
+        discountedPrice:        toFloat(p.DiscountedPrice),
+        discountedPricePerMida: toFloat(p.DiscountedPricePerMida),
+        minQty:                 parseFloat(String(p.MinQty ?? '1')) || 1,
+        maxQty:                 toFloat(p.MaxQty),
+        minPurchaseAmount:      toFloat(p.MinPurchaseAmnt),
+        startDate,
+        endDate,
+        isCoupon,
+        clubId,
+        itemCodes,
+      })
+    }
   }
 
   return result

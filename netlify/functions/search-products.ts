@@ -27,15 +27,16 @@ export const handler: Handler = async (event) => {
       const words = q.trim().split(/\s+/)
       const wordConditions = words.map((_, i) => `name_he ILIKE $${i + 1}`).join(' AND ')
       const wordParams = words.map(w => `%${w}%`)
+      const wordsMatchedExpr = words.map((_, i) => `CASE WHEN name_he ILIKE $${i + 1} THEN 1 ELSE 0 END`).join(' + ')
 
       const result = await pool.query(
         `SELECT barcode, name_he, brand, size,
-                similarity(name_he, $${words.length + 1}) AS score
+                similarity(name_he, $${words.length + 1}) AS score,
+                (${wordsMatchedExpr}) AS words_matched
          FROM products
          WHERE ${wordConditions}
             OR similarity(name_he, $${words.length + 1}) > 0.15
-         ORDER BY score DESC
-         LIMIT 50`,
+         ORDER BY words_matched DESC, score DESC`,
         [...wordParams, q]
       )
       const products = result.rows.map(r => ({
@@ -48,7 +49,7 @@ export const handler: Handler = async (event) => {
     }
 
     // ── Regular search: Redis cache → DB LIMIT 5 ─────────────────────────────
-    const cacheKey = `search:v2:${q.toLowerCase()}`
+    const cacheKey = `search:v3:${q.toLowerCase()}`
     const cached = await redis.get<object[]>(cacheKey)
     if (cached) {
       return { statusCode: 200, headers, body: JSON.stringify(cached) }
@@ -58,14 +59,16 @@ export const handler: Handler = async (event) => {
     const words = q.trim().split(/\s+/)
     const wordConditions = words.map((_, i) => `name_he ILIKE $${i + 1}`).join(' AND ')
     const wordParams = words.map(w => `%${w}%`)
+    const wordsMatchedExpr = words.map((_, i) => `CASE WHEN name_he ILIKE $${i + 1} THEN 1 ELSE 0 END`).join(' + ')
 
     const result = await pool.query(
       `SELECT barcode, name_he, brand, size,
-              similarity(name_he, $${words.length + 1}) AS score
+              similarity(name_he, $${words.length + 1}) AS score,
+              (${wordsMatchedExpr}) AS words_matched
        FROM products
        WHERE ${wordConditions}
           OR similarity(name_he, $${words.length + 1}) > 0.15
-       ORDER BY score DESC
+       ORDER BY words_matched DESC, score DESC
        LIMIT 5`,
       [...wordParams, q]
     )

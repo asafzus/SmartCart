@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import PromoPopup from './PromoPopup'
+import type { PromoInfo } from './PromoPopup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,12 +15,12 @@ interface CompareItem {
   barcode: string | null
   isFreeText: boolean
   prices: Record<string, number | null>
+  promos: Record<string, PromoInfo[]>
 }
 
 interface CompareData {
   chains: Chain[]
   items: CompareItem[]
-  totals: Record<string, number>
   excludedCount: number
 }
 
@@ -43,6 +45,7 @@ export default function CompareScreen({ token }: Props) {
   const [data, setData] = useState<CompareData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [promoPopup, setPromoPopup] = useState<{ chainName: string; promos: PromoInfo[] } | null>(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -77,7 +80,7 @@ export default function CompareScreen({ token }: Props) {
       <div className="flex flex-col items-center justify-center h-40 gap-3 px-md text-center">
         <p className="font-jakarta text-body-md text-error">{error || t('errors.generic')}</p>
         <button onClick={load} className="font-jakarta text-label-sm font-semibold text-primary">
-          {t('errors.generic')}
+          {t('errors.retry')}
         </button>
       </div>
     )
@@ -94,7 +97,7 @@ export default function CompareScreen({ token }: Props) {
     )
   }
 
-  const { chains, items, totals, excludedCount } = data
+  const { chains, items, excludedCount } = data
 
   // Find cheapest price per item (across chains, ignoring nulls)
   function getCheapestChain(item: CompareItem): string | null {
@@ -157,25 +160,38 @@ export default function CompareScreen({ token }: Props) {
                 >
                   {/* Item name */}
                   <td className="px-md py-sm">
-                    <p className="font-jakarta text-body-md text-on-surface truncate max-w-[120px]">
+                    <p className="font-jakarta text-body-md text-on-surface truncate">
                       {item.name}
                     </p>
-                    {item.isFreeText && (
-                      <p className="font-jakarta text-label-sm text-error">{t('compare.freeTextExcluded').split(' ')[0]}</p>
-                    )}
                   </td>
 
                   {/* Price per chain */}
                   {chains.map(chain => {
                     const price = item.prices[chain.id]
                     const isCheapest = cheapestChain === chain.id
+                    const chainPromos = item.promos?.[chain.id] ?? []
+                    const hasPromos = chainPromos.length > 0
+
                     return (
                       <td key={chain.id} className="px-sm py-sm text-center">
                         {price !== null ? (
-                          <span className={`font-worksans text-body-md font-semibold
-                            ${isCheapest ? 'text-price-cheapest' : 'text-on-surface'}`}>
-                            ₪{price.toFixed(2)}
-                          </span>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className={`font-worksans text-body-md font-semibold
+                              ${isCheapest ? 'text-price-cheapest' : 'text-on-surface'}`}>
+                              ₪{price.toFixed(2)}
+                            </span>
+                            {hasPromos && (
+                              <button
+                                onClick={() => setPromoPopup({ chainName: chainName(chain), promos: chainPromos })}
+                                className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-secondary-container text-on-secondary-container hover:opacity-80 transition-opacity leading-tight"
+                              >
+                                {chainPromos.some(p => p.isCoupon) && chainPromos.length === 1
+                                  ? t('item.coupon')
+                                  : `🏷️ ${t('item.promo')}`}
+                                {chainPromos.length > 1 ? ` (${chainPromos.length})` : ''}
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <span className="font-jakarta text-label-sm text-on-surface-variant">
                             {t('compare.notAvailable')}
@@ -188,22 +204,6 @@ export default function CompareScreen({ token }: Props) {
               )
             })}
           </tbody>
-
-          {/* Totals row */}
-          <tfoot>
-            <tr className="border-t-2 border-outline-variant bg-surface-container">
-              <td className="px-md py-sm font-jakarta text-body-md font-semibold text-on-surface">
-                {t('compare.total')}
-              </td>
-              {chains.map(chain => (
-                <td key={chain.id} className="px-sm py-sm text-center">
-                  <span className="font-worksans text-body-md font-semibold text-on-surface">
-                    ₪{totals[chain.id].toFixed(2)}
-                  </span>
-                </td>
-              ))}
-            </tr>
-          </tfoot>
         </table>
       </div>
 
@@ -211,6 +211,15 @@ export default function CompareScreen({ token }: Props) {
       <p className="font-jakarta text-label-sm text-on-surface-variant text-center">
         {t('compare.lastUpdated', { date: new Date().toLocaleDateString(isHe ? 'he-IL' : 'en-US') })}
       </p>
+
+      {/* Promo popup */}
+      {promoPopup && (
+        <PromoPopup
+          chainName={promoPopup.chainName}
+          promos={promoPopup.promos}
+          onClose={() => setPromoPopup(null)}
+        />
+      )}
     </div>
   )
 }
