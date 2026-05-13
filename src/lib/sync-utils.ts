@@ -3,6 +3,7 @@ import { Redis } from '@upstash/redis'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../generated/prisma/client.ts'
 import { gunzipSync } from 'zlib'
+import { Pool } from 'pg'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -108,12 +109,13 @@ const xmlParser = new XMLParser({
 })
 
 // ─── Shufersal Parser ─────────────────────────────────────────────────────────
-// Structure: root > Items > Item[]
-// Tags: ItemCode, ItemName, ManufacturerName, Quantity, UnitQty, ItemPrice
+// Structure: Root > Items > Item[]
+// Tags: ItemCode, ItemName, ManufactureName, Quantity, UnitQty, ItemPrice
 
 export function parseShufersal(xml: string): ParsedProduct[] {
   const parsed = xmlParser.parse(xml)
-  const items = parsed?.root?.Items?.Item ?? []
+  const root = parsed?.Root ?? parsed?.root ?? parsed?.[Object.keys(parsed)[0]]
+  const items = root?.Items?.Item ?? []
   const arr = Array.isArray(items) ? items : [items]
 
   return arr
@@ -121,7 +123,9 @@ export function parseShufersal(xml: string): ParsedProduct[] {
     .map((item: any) => ({
       barcode: String(item.ItemCode).trim(),
       nameHe: String(item.ItemName ?? '').trim(),
-      brand: item.ManufacturerName ? String(item.ManufacturerName).trim() : undefined,
+      brand: (item.ManufactureName ?? item.ManufacturerName)
+        ? String(item.ManufactureName ?? item.ManufacturerName).trim()
+        : undefined,
       size: item.Quantity && item.UnitQty
         ? `${item.Quantity} ${item.UnitQty}`.trim()
         : undefined,
@@ -157,6 +161,12 @@ export async function syncChain(params: {
     if (duplicates.length > 0) {
       console.log(`[syncChain:${chainId}] Duplicates removed (${duplicates.length}): ${duplicates.join(', ')}`)
     }
+
+    // ── Safety guard: never sync an empty product list ─────────────────────
+    if (products.length === 0) {
+      throw new Error(`[syncChain:${chainId}] Parsed 0 products — aborting to protect existing price data. Check XML format.`)
+    }
+
     console.log(`[syncChain:${chainId}] Upserting ${products.length} products...`)
 
     // ── Bulk upsert products in batches of 500 ──────────────────────────────
@@ -205,26 +215,43 @@ export async function syncChain(params: {
       }
     }
 
-    console.log(`[syncChain:${chainId}] Products done. Upserting prices...`)
+    console.log(`[syncChain:${chainId}] Products done. Syncing prices in transaction...`)
 
-    // ── Bulk upsert prices in batches of 500 ───────────────────────────────
-    for (let i = 0; i < products.length; i += SQL_BATCH_SIZE) {
-      const batch = products.slice(i, i + SQL_BATCH_SIZE)
+    // ── Sync prices: DELETE chain rows, then INSERT fresh in a transaction ──
+    {
+      const pgPool = new Pool({ connectionString: process.env.DATABASE_URL! })
+      const client = await pgPool.connect()
+      try {
+        await client.query('BEGIN')
 
-      const values = batch
-        .map((p) => {
-          const barcode = p.barcode.replace(/'/g, "''")
-          return `(gen_random_uuid(), '${barcode}', '${chainId}', ${p.price}, NOW())`
-        })
-        .join(',')
+        // Wipe all existing prices for this chain
+        await client.query('DELETE FROM product_prices WHERE chain_id = $1', [chainId])
 
-      await (prisma as any).$executeRawUnsafe(`
-        INSERT INTO product_prices (id, product_barcode, chain_id, price, updated_date)
-        VALUES ${values}
-        ON CONFLICT (product_barcode, chain_id) DO UPDATE SET
-          price        = EXCLUDED.price,
-          updated_date = NOW()
-      `)
+        // Insert fresh prices in batches
+        for (let i = 0; i < products.length; i += SQL_BATCH_SIZE) {
+          const batch = products.slice(i, i + SQL_BATCH_SIZE)
+          const values = batch
+            .map((p) => {
+              const barcode = p.barcode.replace(/'/g, "''")
+              return `(gen_random_uuid(), '${barcode}', '${chainId}', ${p.price}, NOW())`
+            })
+            .join(',')
+
+          await client.query(`
+            INSERT INTO product_prices (id, product_barcode, chain_id, price, updated_date)
+            VALUES ${values}
+          `)
+        }
+
+        await client.query('COMMIT')
+        console.log(`[syncChain:${chainId}] Prices transaction committed.`)
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      } finally {
+        client.release()
+        await pgPool.end()
+      }
     }
 
     console.log(`[syncChain:${chainId}] Prices done. Updating chain timestamp...`)

@@ -72,40 +72,82 @@ async function fetchRamiLevyPromos(): Promise<ParsedPromo[]> {
 
     const result: ParsedPromo[] = []
 
+    const now = new Date()
+
     for (const p of promos) {
       // Skip inactive
       const isActive = p.AdditionalRestrictions?.AdditionalIsActive ?? 1
       if (String(isActive) === '0') continue
 
-      // Dates
-      const startDate = parseDate(p.PromotionStartDate, p.PromotionStartHour)
-      const endDate   = parseDate(p.PromotionEndDate,   p.PromotionEndHour)
-      if (isNaN(endDate.getTime()) || endDate < new Date()) continue
+      // Dates — new format uses combined ISO datetime, old uses separate date+hour
+      const endDate = p.PromotionEndDateTime
+        ? new Date(p.PromotionEndDateTime)
+        : parseDate(p.PromotionEndDate, p.PromotionEndHour)
+      const startDate = p.PromotionStartDateTime
+        ? new Date(p.PromotionStartDateTime)
+        : parseDate(p.PromotionStartDate, p.PromotionStartHour)
+      if (isNaN(endDate.getTime()) || endDate < now) continue
 
-      // Items
-      const items = p.PromotionItems?.Item ?? []
-      const itemArr = Array.isArray(items) ? items : [items]
-      const itemCodes = itemArr
-        .filter((i: any) => i?.ItemCode)
-        .map((i: any) => String(i.ItemCode).trim())
-      if (itemCodes.length === 0) continue
+      const promotionId = String(p.PromotionID ?? p.PromotionId ?? '').trim()
+      const description = String(p.PromotionDescription ?? '').trim()
+      const clubRaw = String(p.ClubID ?? p.Clubs?.ClubId ?? '0').trim()
+      const clubId = clubRaw.split(/\s*-\s*/)[0].trim()
+      const isCoupon = String(p.AdditionalIsCoupon ?? p.AdditionalRestrictions?.AdditionalIsCoupon ?? '0') === '1'
 
-      const clubId = String(p.Clubs?.ClubId ?? '0').trim()
+      // New format: Groups > Group > PromotionItems > PromotionItem
+      if (p.Groups) {
+        let groups = p.Groups.Group ?? []
+        if (!Array.isArray(groups)) groups = [groups]
 
-      result.push({
-        promotionId:            String(p.PromotionId).trim(),
-        description:            String(p.PromotionDescription ?? '').trim(),
-        discountedPrice:        toFloat(p.DiscountedPrice),
-        discountedPricePerMida: toFloat(p.DiscountedPricePerMida),
-        minQty:                 parseFloat(String(p.MinQty ?? '1')) || 1,
-        maxQty:                 toFloat(p.MaxQty),
-        minPurchaseAmount:      toFloat(p.MinPurchaseAmnt),
-        startDate,
-        endDate,
-        isCoupon:  String(p.AdditionalRestrictions?.AdditionalIsCoupon ?? '0') === '1',
-        clubId,
-        itemCodes,
-      })
+        groups.forEach((group: any, gIdx: number) => {
+          const minPurchaseAmount = toFloat(group.MinPurchaseAmount)
+          let items = group.PromotionItems?.PromotionItem ?? []
+          if (!Array.isArray(items)) items = [items]
+
+          const itemCodes: string[] = []
+          let discountedPrice: number | undefined
+          let discountedPricePerMida: number | undefined
+          let minQty = 1
+          let maxQty: number | undefined
+
+          for (const item of items) {
+            if (!item?.ItemCode) continue
+            itemCodes.push(String(item.ItemCode).trim())
+            if (discountedPrice === undefined) {
+              discountedPrice = toFloat(item.DiscountedPrice)
+              discountedPricePerMida = toFloat(item.DiscountedPricePerMida)
+              minQty = parseFloat(String(item.MinQty ?? '1')) || 1
+              maxQty = toFloat(item.MaxQty)
+            }
+          }
+
+          if (itemCodes.length === 0) return
+          const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
+          result.push({ promotionId: groupPromoId, description, discountedPrice, discountedPricePerMida, minQty, maxQty, minPurchaseAmount, startDate, endDate, isCoupon, clubId, itemCodes })
+        })
+
+      // Old format: flat PromotionItems > Item
+      } else {
+        const items = p.PromotionItems?.Item ?? []
+        const itemArr = Array.isArray(items) ? items : [items]
+        const itemCodes = itemArr.filter((i: any) => i?.ItemCode).map((i: any) => String(i.ItemCode).trim())
+        if (itemCodes.length === 0) continue
+
+        result.push({
+          promotionId,
+          description,
+          discountedPrice:        toFloat(p.DiscountedPrice),
+          discountedPricePerMida: toFloat(p.DiscountedPricePerMida),
+          minQty:                 parseFloat(String(p.MinQty ?? '1')) || 1,
+          maxQty:                 toFloat(p.MaxQty),
+          minPurchaseAmount:      toFloat(p.MinPurchaseAmnt),
+          startDate,
+          endDate,
+          isCoupon,
+          clubId,
+          itemCodes,
+        })
+      }
     }
 
     return result

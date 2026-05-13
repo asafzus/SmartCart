@@ -73,7 +73,9 @@ async function fetchRamiLevyProducts(): Promise<ParsedProduct[]> {
       .map((item: any) => ({
         barcode: String(item.ItemCode).trim(),
         nameHe: String(item.ItemName ?? '').trim(),
-        brand: item.ManufactureName ? String(item.ManufactureName).trim() : undefined,
+        brand: (item.ManufactureName ?? item.ManufacturerName)
+          ? String(item.ManufactureName ?? item.ManufacturerName).trim()
+          : undefined,
         size: item.Quantity && item.UnitQty
           ? `${item.Quantity} ${item.UnitQty}`.trim()
           : undefined,
