@@ -75,7 +75,9 @@ async function fetchAndParseVictory(): Promise<ParsedProduct[]> {
     .map((item: any) => ({
       barcode: String(item.ItemCode ?? item.Barcode).trim(),
       nameHe: String(item.ItemName ?? item.ProductName ?? '').trim(),
-      brand: item.ManufacturerName ? String(item.ManufacturerName).trim() : undefined,
+      brand: (item.ManufacturerName ?? item.ManufactureName)
+        ? String(item.ManufacturerName ?? item.ManufactureName).trim()
+        : undefined,
       size: item.Quantity && item.UnitQty
         ? `${item.Quantity} ${item.UnitQty}`.trim()
         : undefined,

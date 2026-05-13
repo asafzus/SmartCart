@@ -83,56 +83,77 @@ async function fetchVictoryPromos(): Promise<ParsedPromo[]> {
     // Victory has no coupons
     const isCoupon = false
 
-    // Groups > Group[] — each group is an independent set of eligible items
-    let groups = p.Groups?.Group ?? []
-    if (!Array.isArray(groups)) groups = [groups]
+    // New format: Groups > Group > PromotionItems > PromotionItem
+    if (p.Groups) {
+      let groups = p.Groups.Group ?? []
+      if (!Array.isArray(groups)) groups = [groups]
 
-    groups.forEach((group: any, gIdx: number) => {
-      const minPurchaseAmount = toFloat(group.MinPurchaseAmount)
+      groups.forEach((group: any, gIdx: number) => {
+        const minPurchaseAmount = toFloat(group.MinPurchaseAmount)
 
-      let items = group.PromotionItems?.PromotionItem ?? []
-      if (!Array.isArray(items)) items = [items]
+        let items = group.PromotionItems?.PromotionItem ?? []
+        if (!Array.isArray(items)) items = [items]
 
-      // Collect item codes and representative pricing from the group
-      const itemCodes: string[] = []
-      let discountedPrice: number | undefined
-      let discountedPricePerMida: number | undefined
-      let minQty = 1
-      let maxQty: number | undefined
+        const itemCodes: string[] = []
+        let discountedPrice: number | undefined
+        let discountedPricePerMida: number | undefined
+        let minQty = 1
+        let maxQty: number | undefined
 
-      for (const item of items) {
-        if (!item?.ItemCode) continue
-        itemCodes.push(String(item.ItemCode).trim())
+        for (const item of items) {
+          if (!item?.ItemCode) continue
+          itemCodes.push(String(item.ItemCode).trim())
 
-        // Take the first item's pricing as representative for the group
-        if (discountedPrice === undefined) {
-          discountedPrice = toFloat(item.DiscountedPrice)
-          discountedPricePerMida = toFloat(item.DiscountedPricePerMida ?? item.DiscountedPricePerUnit)
-          minQty = parseFloat(String(item.MinQty ?? '1')) || 1
-          maxQty = toFloat(item.MaxQty)
+          if (discountedPrice === undefined) {
+            discountedPrice = toFloat(item.DiscountedPrice)
+            discountedPricePerMida = toFloat(item.DiscountedPricePerMida ?? item.DiscountedPricePerUnit)
+            minQty = parseFloat(String(item.MinQty ?? '1')) || 1
+            maxQty = toFloat(item.MaxQty)
+          }
         }
-      }
 
-      if (itemCodes.length === 0) return
+        if (itemCodes.length === 0) return
 
-      // Use group index in promotionId to distinguish groups within the same promotion
-      const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
+        const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
+
+        result.push({
+          promotionId: groupPromoId,
+          description,
+          discountedPrice,
+          discountedPricePerMida,
+          minQty,
+          maxQty,
+          minPurchaseAmount,
+          startDate,
+          endDate,
+          isCoupon,
+          clubId,
+          itemCodes,
+        })
+      })
+
+    // Old format: flat PromotionItems > Item
+    } else {
+      const items = p.PromotionItems?.Item ?? []
+      const itemArr = Array.isArray(items) ? items : [items]
+      const itemCodes = itemArr.filter((i: any) => i?.ItemCode).map((i: any) => String(i.ItemCode).trim())
+      if (itemCodes.length === 0) continue
 
       result.push({
-        promotionId: groupPromoId,
+        promotionId,
         description,
-        discountedPrice,
-        discountedPricePerMida,
-        minQty,
-        maxQty,
-        minPurchaseAmount,
+        discountedPrice:        toFloat(p.DiscountedPrice),
+        discountedPricePerMida: toFloat(p.DiscountedPricePerMida),
+        minQty:                 parseFloat(String(p.MinQty ?? '1')) || 1,
+        maxQty:                 toFloat(p.MaxQty),
+        minPurchaseAmount:      toFloat(p.MinPurchaseAmnt),
         startDate,
         endDate,
         isCoupon,
         clubId,
         itemCodes,
       })
-    })
+    }
   }
 
   return result

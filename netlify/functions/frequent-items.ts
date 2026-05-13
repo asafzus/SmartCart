@@ -28,15 +28,19 @@ export const handler: Handler = async (event) => {
 
   try {
     // ── Get top 8 most-added items for this user ──────────────────────────────
-    const members = await redis.zrevrange(`frequent:${user.id}`, 0, 7)
+    const members = await redis.zrange(`frequent:${user.id}`, '+inf', '-inf', {
+      byScore: true,
+      rev: true,
+      limit: { offset: 0, count: 8 },
+    })
 
     if (!members || members.length === 0) {
       return { statusCode: 200, headers, body: JSON.stringify([]) }
     }
 
     // ── Split barcodes from free-text entries ─────────────────────────────────
-    const barcodes = members.filter((m: string) => !m.startsWith('ft:'))
-    const freeTexts = members.filter((m: string) => m.startsWith('ft:')).map((m: string) => m.slice(3))
+    const barcodes = members.filter((m: any) => !String(m).startsWith('ft:')).map((m: any) => String(m))
+    const freeTexts = members.filter((m: any) => String(m).startsWith('ft:')).map((m: any) => String(m).slice(3))
 
     // ── Look up product names from DB for barcode items ───────────────────────
     let productMap = new Map<string, { name: string; brand: string | null; size: string | null }>()
@@ -57,7 +61,8 @@ export const handler: Handler = async (event) => {
     }
 
     // ── Build response in original order (highest frequency first) ────────────
-    const items = members.map((member: string) => {
+    const items = members.map((m: any) => {
+      const member = String(m)
       if (member.startsWith('ft:')) {
         const text = member.slice(3)
         return { barcode: null, freeText: text, name: text, brand: null, size: null }
