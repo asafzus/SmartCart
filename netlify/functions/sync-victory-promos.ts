@@ -23,7 +23,7 @@ function toFloat(val: any): number | undefined {
 async function getVictoryPromoFileUrl(): Promise<string> {
   const res = await fetch(`${API_BASE}/api/getfiles?edi=${CHAIN_EDI}`, {
     headers: { 'User-Agent': 'SmartCart/1.0' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) throw new Error(`getfiles failed: ${res.status}`)
   const files: any[] = await res.json()
@@ -53,7 +53,7 @@ async function fetchVictoryPromos(): Promise<ParsedPromo[]> {
 
   const res = await fetch(fileUrl, {
     headers: { 'User-Agent': 'SmartCart/1.0' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) throw new Error(`File download failed: ${res.status}`)
 
