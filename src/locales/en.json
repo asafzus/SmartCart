@@ -158,6 +158,17 @@
     "langEn": "English",
     "langHe": "Hebrew"
   },
+  "chat": {
+    "title": "SmartCart AI",
+    "subtitle": "Cooking & grocery assistant",
+    "emptyTitle": "What can I help you cook?",
+    "emptySubtitle": "Ask me for recipe ideas, ingredient substitutions, or meal planning tips.",
+    "placeholder": "Ask anything about food or recipes...",
+    "send": "Send",
+    "newChat": "New chat",
+    "error": "Something went wrong. Please try again.",
+    "disclaimer": "AI can make mistakes. Always verify."
+  },
   "errors": {
     "generic": "Something went wrong. Please try again.",
     "network": "Network error. Check your connection.",
