@@ -35,6 +35,14 @@ interface LocationState {
   categoryEmoji?: string
 }
 
+// ── Chain display names ───────────────────────────────────────────────────────
+
+const CHAIN_NAME_EN: Record<string, string> = {
+  'shufersal': 'Shufersal',
+  'rami-levy': 'Rami Levy',
+  'victory':   'Victory',
+}
+
 // ── PriceSheet ────────────────────────────────────────────────────────────────
 
 interface PriceSheetProps {
@@ -117,7 +125,9 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
                               ✓
                             </span>
                           )}
-                          <span className="font-jakarta text-body-md text-on-surface">{row.chainName}</span>
+                          <span className="font-jakarta text-body-md text-on-surface">
+                            {isHe ? row.chainName : (CHAIN_NAME_EN[row.chainId] ?? row.chainName)}
+                          </span>
                         </div>
                       </td>
 
@@ -125,7 +135,7 @@ function PriceSheet({ product, prices, loading, adding, onAdd, onClose }: PriceS
                       <td className="py-sm text-center">
                         {hasPromos && (
                           <button
-                            onClick={() => setPromoPopup({ chainName: row.chainName, promos: row.promos })}
+                            onClick={() => setPromoPopup({ chainName: isHe ? row.chainName : (CHAIN_NAME_EN[row.chainId] ?? row.chainName), promos: row.promos })}
                             className="text-xs px-xs py-0.5 rounded-full font-semibold font-jakarta bg-secondary-container text-on-secondary-container hover:opacity-80 transition-opacity"
                           >
                             {row.promos.some(p => p.isCoupon) && row.promos.length === 1

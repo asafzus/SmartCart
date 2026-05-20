@@ -54,51 +54,36 @@ export function parseShufersalPromos(xml: string): ParsedPromo[] {
     const isCoupon = String(p.AdditionalIsCoupon ?? p.AdditionalRestrictions?.AdditionalIsCoupon ?? '0') === '1'
 
     // ── New format: Groups > Group > PromotionItems > PromotionItem ───────────
+    // Each item gets its own ParsedPromo entry so it carries its own DiscountedPrice
     if (p.Groups) {
       let groups = p.Groups.Group ?? []
       if (!Array.isArray(groups)) groups = [groups]
 
       groups.forEach((group: any, gIdx: number) => {
         const minPurchaseAmount = toFloat(group.MinPurchaseAmount)
+        const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
 
         let items = group.PromotionItems?.PromotionItem ?? []
         if (!Array.isArray(items)) items = [items]
 
-        const itemCodes: string[] = []
-        let discountedPrice: number | undefined
-        let discountedPricePerMida: number | undefined
-        let minQty = 1
-        let maxQty: number | undefined
-
         for (const item of items) {
           if (!item?.ItemCode) continue
-          itemCodes.push(String(item.ItemCode).trim())
-          if (discountedPrice === undefined) {
-            discountedPrice = toFloat(item.DiscountedPrice)
-            discountedPricePerMida = toFloat(item.DiscountedPricePerMida)
-            minQty = parseFloat(String(item.MinQty ?? '1')) || 1
-            maxQty = toFloat(item.MaxQty)
-          }
+
+          result.push({
+            promotionId: groupPromoId,
+            description,
+            discountedPrice:        toFloat(item.DiscountedPrice),
+            discountedPricePerMida: toFloat(item.DiscountedPricePerMida),
+            minQty:                 parseFloat(String(item.MinQty ?? '1')) || 1,
+            maxQty:                 toFloat(item.MaxQty),
+            minPurchaseAmount,
+            startDate,
+            endDate,
+            isCoupon,
+            clubId,
+            itemCodes: [String(item.ItemCode).trim()],
+          })
         }
-
-        if (itemCodes.length === 0) return
-
-        const groupPromoId = groups.length > 1 ? `${promotionId}-G${gIdx}` : promotionId
-
-        result.push({
-          promotionId: groupPromoId,
-          description,
-          discountedPrice,
-          discountedPricePerMida,
-          minQty,
-          maxQty,
-          minPurchaseAmount,
-          startDate,
-          endDate,
-          isCoupon,
-          clubId,
-          itemCodes,
-        })
       })
 
     // ── Old format: flat PromotionItems > Item ────────────────────────────────
