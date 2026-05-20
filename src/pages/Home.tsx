@@ -300,7 +300,11 @@ function TelegramConfirmModal({ preview, status, onSend, onClose }: TelegramConf
 
 // ── Home ──────────────────────────────────────────────────────────────────────
 
-export default function Home() {
+interface HomeProps {
+  onOpenChat: () => void
+}
+
+export default function Home({ onOpenChat }: HomeProps) {
   const { t, i18n } = useTranslation()
   const { token, logout } = useAuth()
   const navigate = useNavigate()
@@ -672,6 +676,17 @@ export default function Home() {
           onSend={sendToTelegram}
           onClose={() => { setShowTelegramConfirm(false); setTelegramStatus('idle') }}
         />
+      )}
+
+      {/* ── Floating chat button (list tab only, always bottom-right) ──── */}
+      {activeTab === 'list' && (
+        <button
+          onClick={onOpenChat}
+          className="fixed bottom-24 right-4 z-30 w-14 h-14 rounded-full bg-secondary text-on-secondary shadow-lg flex items-center justify-center text-2xl hover:opacity-90 active:scale-95 transition-all"
+          aria-label={t('chat.title')}
+        >
+          🤖
+        </button>
       )}
 
       {/* Toast */}
