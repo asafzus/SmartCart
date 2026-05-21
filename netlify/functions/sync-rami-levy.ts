@@ -119,7 +119,5 @@ export default async function handler() {
   }
 }
 
-// Run daily at 03:10 UTC (staggered after Shufersal)
-export const config: Config = {
-  schedule: '10 3 * * *',
-}
+// Scheduled via GitHub Actions — see .github/workflows/sync-rami-levy.yml
+export const config: Config = {}

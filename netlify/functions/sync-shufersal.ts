@@ -54,6 +54,5 @@ export default async function handler() {
   }
 }
 
-export const config: Config = {
-  schedule: '0 3 * * *',
-}
+// Scheduled via GitHub Actions — see .github/workflows/sync-shufersal.yml
+export const config: Config = {}

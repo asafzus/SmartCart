@@ -117,6 +117,5 @@ export default async function handler() {
   }
 }
 
-export const config: Config = {
-  schedule: '20 3 * * *',
-}
+// Scheduled via GitHub Actions — see .github/workflows/sync-victory.yml
+export const config: Config = {}

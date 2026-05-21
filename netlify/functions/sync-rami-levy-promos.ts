@@ -183,6 +183,5 @@ export default async function handler() {
   }
 }
 
-export const config: Config = {
-  schedule: '40 3 * * *',
-}
+// Scheduled via GitHub Actions — see .github/workflows/sync-rami-levy-promos.yml
+export const config: Config = {}

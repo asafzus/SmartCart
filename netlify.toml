@@ -51,15 +51,4 @@
 [functions]
   node_bundler = "esbuild"
 
-# ─── Scheduled sync functions ─────────────────────────────────
-# Shufersal — master chain (canonical product names) — 03:00 UTC daily
-[functions."sync-shufersal"]
-  schedule = "0 3 * * *"
-
-# Rami Levy — prices only — 03:10 UTC daily
-[functions."sync-rami-levy"]
-  schedule = "10 3 * * *"
-
-# Victory — prices only — 03:20 UTC daily
-[functions."sync-victory"]
-  schedule = "20 3 * * *"
+# Syncs are scheduled via GitHub Actions (.github/workflows/sync-*.yml)
