@@ -110,10 +110,10 @@ export default function TelegramSetup() {
           <div className="w-full mb-4">
             <div className="flex justify-between items-start relative">
               {/* background track */}
-              <div className="absolute top-5 left-0 w-full h-0.5 bg-surface-container-highest z-0" />
+              <div className={`absolute top-5 ${isHe ? 'right-0' : 'left-0'} w-full h-0.5 bg-surface-container-highest z-0`} />
               {/* progress track */}
               <div
-                className="absolute top-5 left-0 h-0.5 bg-primary z-0 transition-all duration-500"
+                className={`absolute top-5 ${isHe ? 'right-0' : 'left-0'} h-0.5 bg-primary z-0 transition-all duration-500`}
                 style={{ width: stepIndex === 0 ? '0%' : stepIndex === 1 ? '50%' : '100%' }}
               />
 
