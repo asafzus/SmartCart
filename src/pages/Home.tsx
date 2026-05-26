@@ -389,23 +389,34 @@ export default function Home() {
     const title = isHe ? 'רשימת הקניות שלי' : 'My Shopping List'
     const uncategorized = isHe ? 'אחר' : 'Other'
 
-    const grouped = new Map<string, string[]>()
+    // Group by category name, tracking the categoryId for sort ordering
+    const grouped = new Map<string, { categoryId: string | null; names: string[] }>()
     for (const item of unchecked) {
       const cat = (isHe ? item.categoryName : item.categoryNameEn) ?? uncategorized
-      if (!grouped.has(cat)) grouped.set(cat, [])
+      if (!grouped.has(cat)) grouped.set(cat, { categoryId: item.categoryId, names: [] })
       const label = item.qty > 1 ? `${item.name} x${item.qty}` : item.name
-      grouped.get(cat)!.push(label)
+      grouped.get(cat)!.names.push(label)
     }
 
+    // Sort by pinned category order (activeCategories), uncategorized goes last
+    const sorted = [...grouped.entries()].sort(([, a], [, b]) => {
+      const aIdx = a.categoryId ? activeCategories.indexOf(a.categoryId) : -1
+      const bIdx = b.categoryId ? activeCategories.indexOf(b.categoryId) : -1
+      if (aIdx === -1 && bIdx === -1) return 0
+      if (aIdx === -1) return 1
+      if (bIdx === -1) return -1
+      return aIdx - bIdx
+    })
+
     const lines: string[] = [title, '']
-    for (const [cat, names] of grouped) {
+    for (const [cat, { names }] of sorted) {
       lines.push(`${cat}:`)
       lines.push('')
       for (const name of names) lines.push(`* ${name}`)
       lines.push('')
     }
     return lines.join('\n').trimEnd()
-  }, [items, isHe])
+  }, [items, isHe, activeCategories])
 
   const sendToTelegram = useCallback(async () => {
     setTelegramStatus('sending')
