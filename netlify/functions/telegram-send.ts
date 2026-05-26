@@ -7,27 +7,36 @@ function getPool() {
 }
 
 function formatList(
-  items: Array<{ name: string; category: string | null; qty: number }>,
-  isHe: boolean
+  items: Array<{ name: string; category: string | null; category_id: string | null; qty: number }>,
+  isHe: boolean,
+  pinnedCategories: string[]
 ): string {
   const uncategorized = isHe ? 'אחר' : 'Other'
   const title = isHe ? 'רשימת הקניות שלי' : 'My Shopping List'
 
-  const grouped = new Map<string, string[]>()
+  const grouped = new Map<string, { categoryId: string | null; names: string[] }>()
   for (const item of items) {
     const cat = item.category ?? uncategorized
-    if (!grouped.has(cat)) grouped.set(cat, [])
+    if (!grouped.has(cat)) grouped.set(cat, { categoryId: item.category_id, names: [] })
     const label = item.qty > 1 ? `${item.name} x${item.qty}` : item.name
-    grouped.get(cat)!.push(label)
+    grouped.get(cat)!.names.push(label)
   }
 
+  // Sort categories by pinned order, uncategorized last
+  const sorted = [...grouped.entries()].sort(([, a], [, b]) => {
+    const aIdx = a.categoryId ? pinnedCategories.indexOf(a.categoryId) : -1
+    const bIdx = b.categoryId ? pinnedCategories.indexOf(b.categoryId) : -1
+    if (aIdx === -1 && bIdx === -1) return 0
+    if (aIdx === -1) return 1
+    if (bIdx === -1) return -1
+    return aIdx - bIdx
+  })
+
   const lines: string[] = [title, '']
-  for (const [cat, names] of grouped) {
+  for (const [cat, { names }] of sorted) {
     lines.push(`${cat}:`)
     lines.push('')
-    for (const name of names) {
-      lines.push(`* ${name}`)
-    }
+    for (const name of names) lines.push(`* ${name}`)
     lines.push('')
   }
 
@@ -63,18 +72,26 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'not_linked' }) }
     }
 
+    // ── Get pinned category order ────────────────────────────────────────────
+    const listResult = await pool.query(
+      'SELECT pinned_categories FROM lists WHERE user_id = $1 LIMIT 1',
+      [user.id]
+    )
+    const pinnedCategories: string[] = listResult.rows[0]?.pinned_categories ?? []
+
     // ── Get unchecked items ──────────────────────────────────────────────────
     const itemsResult = await pool.query(
       `SELECT
          COALESCE(p.name_he, li.free_text) AS name,
          CASE WHEN $2 THEN c.name_he ELSE c.name_en END AS category,
+         li.category_id,
          li.qty
        FROM list_items li
        LEFT JOIN products p  ON li.product_barcode = p.barcode
        LEFT JOIN categories c ON li.category_id    = c.id
        WHERE li.list_id IN (SELECT id FROM lists WHERE user_id = $1)
          AND li.is_checked = false
-       ORDER BY c.name_he NULLS LAST, li.created_at ASC`,
+       ORDER BY li.created_at ASC`,
       [user.id, isHe]
     )
 
@@ -82,7 +99,7 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'empty_list' }) }
     }
 
-    const text = formatList(itemsResult.rows, isHe)
+    const text = formatList(itemsResult.rows, isHe, pinnedCategories)
 
     // ── Send to Telegram ─────────────────────────────────────────────────────
     const tgRes = await fetch(
